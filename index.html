@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>แทร็กเกอร์รายรับและรายจ่าย</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background: linear-gradient(135deg, #ff9a9e, #fad0c4);
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 400px;
+            margin: auto;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        input,
+        button,
+        select,
+        input[type="date"] {
+            margin: 10px 0;
+            padding: 10px;
+            width: 100%;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+        }
+
+        button {
+            background-color: #28a745;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #218838;
+        }
+
+        ul {
+            list-style-type: none;
+            padding: 0;
+        }
+
+        li {
+            margin: 5px 0;
+            padding: 10px;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: #f8f9fa;
+        }
+
+        .income {
+            color: #28a745;
+        }
+
+        .expense {
+            color: #dc3545;
+        }
+
+        .summary {
+            font-size: 18px;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+
+        .chart-container {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h2>บันทึกรายรับและรายจ่าย</h2>
+        <input type="text" id="description" placeholder="คำอธิบาย">
+        <input type="number" id="amount" placeholder="จำนวนเงิน">
+        <select id="type">
+            <option value="income">รายรับ</option>
+            <option value="expense">รายจ่าย</option>
+        </select>
+        <input type="date" id="date">
+        <button onclick="เพิ่มรายการ()">เพิ่มรายการ</button>
+        <h3>รายการทั้งหมด</h3>
+        <ul id="transactionList"></ul>
+        <div class="summary">
+            <p>รายรับรวม: <span class="income" id="totalIncome">0</span></p>
+            <p>รายจ่ายรวม: <span class="expense" id="totalExpense">0</span></p>
+            <p>ยอดคงเหลือ: <span id="total">0</span></p>
+            <p>รายจ่ายสำหรับวันที่เลือก: <span id="totalExpenseDate">0</span></p>
+        </div>
+        <div class="chart-container">
+            <canvas id="balanceChart"></canvas>
+        </div>
+    </div>
+
+    <script>
+        let transactions = JSON.parse(localStorage.getItem("transactions")) || [];
+        let chart;
+
+        function เพิ่มรายการ() {
+            const description = document.getElementById("description").value;
+            const amount = parseFloat(document.getElementById("amount").value);
+            const type = document.getElementById("type").value;
+            const date = document.getElementById("date").value;
+            if (description && !isNaN(amount) && date) {
+                transactions.push({ description, amount, type, date });
+                localStorage.setItem("transactions", JSON.stringify(transactions));
+                อัพเดตUI();
+                document.getElementById("description").value = "";
+                document.getElementById("amount").value = "";
+                document.getElementById("date").value = "";
+            }
+        }
+
+        function อัพเดตUI() {
+            const transactionList = document.getElementById("transactionList");
+            transactionList.innerHTML = "";
+            let totalIncome = 0;
+            let totalExpense = 0;
+            let totalExpenseDate = 0;
+            const selectedDate = document.getElementById("date").value;
+            transactions.forEach((t, index) => {
+                if (t.type === "income") {
+                    totalIncome += t.amount;
+                } else {
+                    totalExpense += t.amount;
+                    if (t.date === selectedDate) {
+                        totalExpenseDate += t.amount;
+                    }
+                }
+                transactionList.innerHTML += `<li class="${t.type}">${t.date} - ${t.description}: ${t.amount} (${t.type}) <button onclick="ลบรายการ(${index})">X</button></li>`;
+            });
+            document.getElementById("totalIncome").innerText = totalIncome;
+            document.getElementById("totalExpense").innerText = totalExpense;
+            document.getElementById("total").innerText = totalIncome - totalExpense;
+            document.getElementById("totalExpenseDate").innerText = totalExpenseDate;
+            อัพเดตกราฟ(totalIncome, totalExpense);
+        }
+
+        function ลบรายการ(index) {
+            transactions.splice(index, 1);
+            localStorage.setItem("transactions", JSON.stringify(transactions));
+            อัพเดตUI();
+        }
+
+        function อัพเดตกราฟ(income, expense) {
+            const ctx = document.getElementById("balanceChart").getContext("2d");
+            if (chart) {
+                chart.destroy();
+            }
+            chart = new Chart(ctx, {
+                type: "doughnut",
+                data: {
+                    labels: ["ยอดคงเหลือ", "รายจ่าย"],
+                    datasets: [{
+                        data: [income - expense, expense],
+                        backgroundColor: ["#007bff", "#dc3545"],
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        datalabels: {
+                            color: '#fff',
+                            formatter: (value, ctx) => {
+                                let total = ctx.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+                                return total ? ((value / total) * 100).toFixed(1) + '%' : '0%';
+                            },
+                            font: {
+                                weight: 'bold',
+                                size: 16
+                            }
+                        }
+                    }
+                },
+                plugins: [ChartDataLabels]
+            });
+        }
+
+        document.addEventListener("DOMContentLoaded", อัพเดตUI);
+    </script>
+</body>
+
+</html>
